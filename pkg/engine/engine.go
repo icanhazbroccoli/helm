@@ -96,6 +96,41 @@ func FuncMap() template.FuncMap {
 		f[k] = v
 	}
 
+	// Locally overloaded functions. The first block is a simple decoration
+	// on top of existing function map.
+	// The second block is tricky: it overloads built-in template functions.
+	overloads := template.FuncMap{
+		"int64":     overloadInt64(f["int64"]),
+		"int":       overloadInt(f["int"]),
+		"float64":   overloadFloat64(f["float64"]),
+		"add1":      overloadInt64(f["add1"]),
+		"add":       overloadMultiInt64(f["add"]),
+		"sub":       overloadBiInt64(f["sub"]),
+		"div":       overloadBiInt64(f["div"]),
+		"mod":       overloadBiInt64(f["mod"]),
+		"mul":       overloadOnePlusInt64(f["mul"]),
+		"max":       overloadOnePlusInt64(f["max"]),
+		"biggest":   overloadOnePlusInt64(f["biggest"]),
+		"min":       overloadOnePlusInt64(f["min"]),
+		"ceil":      overloadFloat64(f["ceil"]),
+		"floor":     overloadFloat64(f["floor"]),
+		"round":     overloadRound(f["round"]),
+		"until":     overloadUntil(f["until"]),
+		"untilStep": overloadUntilStep(f["untilStep"]),
+		"splitn":    overloadSplitn(f["splitn"]),
+
+		"eq": overloadTemplateBuiltinOnePlus(template_builtin_eq),
+		"ge": overloadTemplateBuiltinBi(template_builtin_ge),
+		"gt": overloadTemplateBuiltinBi(template_builtin_gt),
+		"le": overloadTemplateBuiltinBi(template_builtin_le),
+		"lt": overloadTemplateBuiltinBi(template_builtin_lt),
+		"ne": overloadTemplateBuiltinBi(template_builtin_ne),
+	}
+
+	for k, o := range overloads {
+		f[k] = o
+	}
+
 	return f
 }
 
