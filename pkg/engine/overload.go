@@ -20,41 +20,99 @@ import (
 	"C"
 	"encoding/json"
 	"reflect"
+	"text/template"
 	_ "unsafe"
 )
 
 // These functions below are linked to unexported test/template functions.
 // See https://golang.org/src/text/template/funcs.go for more details.
 
-//go:linkname template_builtin_eq text/template.eq
-func template_builtin_eq(arg1 reflect.Value, arg2 ...reflect.Value) (bool, error)
+//go:linkname templateBuiltinEq text/template.eq
+func templateBuiltinEq(arg1 reflect.Value, arg2 ...reflect.Value) (bool, error)
 
-//go:linkname template_builtin_ge text/template.ge
-func template_builtin_ge(arg1, arg2 reflect.Value) (bool, error)
+//go:linkname templateBuiltinGe text/template.ge
+func templateBuiltinGe(arg1, arg2 reflect.Value) (bool, error)
 
-//go:linkname template_builtin_gt text/template.gt
-func template_builtin_gt(arg1, arg2 reflect.Value) (bool, error)
+//go:linkname templateBuiltinGt text/template.gt
+func templateBuiltinGt(arg1, arg2 reflect.Value) (bool, error)
 
-//go:linkname template_builtin_le text/template.le
-func template_builtin_le(arg1, arg2 reflect.Value) (bool, error)
+//go:linkname templateBuiltinLe text/template.le
+func templateBuiltinLe(arg1, arg2 reflect.Value) (bool, error)
 
-//go:linkname template_builtin_lt text/template.lt
-func template_builtin_lt(arg1, arg2 reflect.Value) (bool, error)
+//go:linkname templateBuiltinLt text/template.lt
+func templateBuiltinLt(arg1, arg2 reflect.Value) (bool, error)
 
-//go:linkname template_builtin_ne text/template.ne
-func template_builtin_ne(arg1, arg2 reflect.Value) (bool, error)
+//go:linkname templateBuiltinNe text/template.ne
+func templateBuiltinNe(arg1, arg2 reflect.Value) (bool, error)
+
+func OverloadJsonNumberFuncs(f template.FuncMap) template.FuncMap {
+	// Locally overloaded functions. The first block is a simple decoration
+	// on top of existing function map.
+	// The second block is tricky: it overloads built-in template functions.
+	overloads := template.FuncMap{
+		"int64":     overloadInt64(f["int64"]),
+		"int":       overloadInt(f["int"]),
+		"float64":   overloadFloat64(f["float64"]),
+		"add1":      overloadAdd1(f["add1"]),
+		"add":       overloadAdd(f["add"]),
+		"sub":       overloadSub(f["sub"]),
+		"div":       overloadDiv(f["div"]),
+		"mod":       overloadMod(f["mod"]),
+		"mul":       overloadMul(f["mul"]),
+		"max":       overloadMax(f["max"]),
+		"biggest":   overloadBiggest(f["biggest"]),
+		"min":       overloadMin(f["min"]),
+		"ceil":      overloadCeil(f["ceil"]),
+		"floor":     overloadFloor(f["floor"]),
+		"round":     overloadRound(f["round"]),
+		"until":     overloadUntil(f["until"]),
+		"untilStep": overloadUntilStep(f["untilStep"]),
+		"splitn":    overloadSplitn(f["splitn"]),
+
+		"abbrev":       overloadAbbrev(f["abbrev"]),
+		"abbrevboth":   overloadAbbrevBoth(f["abbrevboth"]),
+		"trunc":        overloadTrunc(f["trunc"]),
+		"substr":       overloadSubstr(f["substr"]),
+		"repeat":       overloadRepeat(f["repeat"]),
+		"randAlphaNum": overloadRandAlphaNum(f["randAlphaNum"]),
+		"randAlpha":    overloadRandAlpha(f["randAlpha"]),
+		"randAscii":    overloadRandAscii(f["randAscii"]),
+		"randNumeric":  overloadRandNumeric(f["randNumeric"]),
+		"wrap":         overloadWrap(f["wrap"]),
+		"wrapWith":     overloadWrapWith(f["wrapWith"]),
+		"indent":       overloadIndent(f["indent"]),
+		"nindent":      overloadNindent(f["nindent"]),
+		"plural":       overloadPlural(f["plural"]),
+		"slice":        overloadSlice(f["slice"]),
+
+		"eq": overloadTemplateBuiltinOnePlus(templateBuiltinEq),
+		"ge": overloadTemplateBuiltinBi(templateBuiltinGe),
+		"gt": overloadTemplateBuiltinBi(templateBuiltinGt),
+		"le": overloadTemplateBuiltinBi(templateBuiltinLe),
+		"lt": overloadTemplateBuiltinBi(templateBuiltinLt),
+		"ne": overloadTemplateBuiltinBi(templateBuiltinNe),
+	}
+
+	for k, o := range overloads {
+		f[k] = o
+	}
+
+	return f
+}
+
+var overloadAdd1 = overloadInt64
 
 // context for built-ins: template builtins are context-dependant and will try
 // to cast the arguments to comparable primitives. Here we define 2 constants:
 // integer-context and float-context. These are bit flags which we expect to
 // check on guessArgsNumCtx return.
 const (
-	ctx_int uint8 = 1 << iota
-	ctx_float
+	ctxInt uint8 = 1 << iota
+	ctxFloat
 )
 
-// guessArgsNumCtx tries to guess argument context. As a result, it returns a
-// bit mask with int or/and float context bit set.
+// guessArgsNumCtx tries to guess numeric argument context. As a result,
+// it returns a bit mask with int or/and float context bit set.
 // 0 means we couldn't conclude any specific context.
 // both 0b01 and 0b10 are normal masks denoting a clear mono-context.
 // 0b11 means both float and int arguments have been met in the argument list,
@@ -65,9 +123,9 @@ func guessArgsNumCtx(i []interface{}) uint8 {
 		rv := reflect.ValueOf(v)
 		switch rv.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-			ctx |= ctx_int
+			ctx |= ctxInt
 		case reflect.Float32, reflect.Float64:
-			ctx |= ctx_float
+			ctx |= ctxFloat
 		}
 	}
 	return ctx
@@ -88,13 +146,13 @@ func convArgsToVals(i []interface{}) ([]reflect.Value, error) {
 	for _, v := range i {
 		if jsnum, ok := v.(json.Number); ok {
 			switch ctx {
-			case ctx_float:
+			case ctxFloat:
 				fv64, err := jsnum.Float64()
 				if err != nil {
 					return nil, err
 				}
 				v = fv64
-			case ctx_int:
+			case ctxInt:
 				iv64, err := jsnum.Int64()
 				if err != nil {
 					return nil, err
@@ -109,9 +167,9 @@ func convArgsToVals(i []interface{}) ([]reflect.Value, error) {
 	return vals, nil
 }
 
-// overloadTemplateBuiltinOnePlus overloads a template builtin function with 1+
+// cmnOvrTmplBuiltinOnePlus overloads a template builtin function with 1+
 // argument list.
-func overloadTemplateBuiltinOnePlus(orig interface{}) func(interface{}, ...interface{}) (bool, error) {
+func cmnOvrTmplBuiltinOnePlus(orig interface{}) func(interface{}, ...interface{}) (bool, error) {
 	return func(a interface{}, i ...interface{}) (bool, error) {
 		vals, err := convArgsToVals(append([]interface{}{a}, i...))
 		if err != nil {
@@ -122,9 +180,9 @@ func overloadTemplateBuiltinOnePlus(orig interface{}) func(interface{}, ...inter
 	}
 }
 
-// overloadTemplateBuiltinBi overloads a template builtin function with 2
+// cmnOvrTmplBuiltinTuple overloads a template builtin function with 2
 // arguments.
-func overloadTemplateBuiltinBi(orig interface{}) func(interface{}, interface{}) (bool, error) {
+func cmnOvrTmplBuiltinTuple(orig interface{}) func(interface{}, interface{}) (bool, error) {
 	return func(a interface{}, b interface{}) (bool, error) {
 		vals, err := convArgsToVals([]interface{}{a, b})
 		if err != nil {
