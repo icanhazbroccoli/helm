@@ -18,9 +18,11 @@ package engine
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"path"
+	"reflect"
 	"sort"
 	"strings"
 	"text/template"
@@ -96,7 +98,67 @@ func FuncMap() template.FuncMap {
 		f[k] = v
 	}
 
+	for k, v := range f {
+		f[k] = overload(k, v)
+	}
+
 	return f
+}
+
+const (
+	ctxInt uint8 = 1 << (iota + 1)
+	ctxFloat
+)
+
+func guessCtx(in []reflect.Value) uint8 {
+	var ctx uint8
+	for _, v := range in {
+		switch v.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			ctx |= ctxInt
+		case reflect.Float32, reflect.Float64:
+			ctx |= ctxFloat
+		}
+	}
+	return ctx
+}
+
+func overload(name string, fn interface{}) interface{} {
+	v := reflect.ValueOf(fn)
+	_overloaded := func(in []reflect.Value) []reflect.Value {
+		ctx := guessCtx(in)
+		convs := make([]reflect.Value, 0, len(in))
+		for _, v := range in {
+			if v.Kind() == reflect.Interface {
+				e := v.Interface()
+				if num, ok := e.(json.Number); ok {
+					switch ctx {
+					case ctxInt:
+						if iv64, err := num.Int64(); err == nil {
+							v = reflect.ValueOf(iv64)
+						}
+					case ctxFloat:
+						if fv64, err := num.Float64(); err == nil {
+							v = reflect.ValueOf(fv64)
+						}
+					default:
+						if iv64, err := num.Int64(); err == nil {
+							v = reflect.ValueOf(iv64)
+						} else if fv64, err := num.Float64(); err == nil {
+							v = reflect.ValueOf(fv64)
+						}
+					}
+				}
+			}
+			convs = append(convs, v)
+		}
+		if v.Type().IsVariadic() {
+			return v.CallSlice(convs)
+		}
+		return v.Call(convs)
+	}
+	mkfn := reflect.MakeFunc(v.Type(), _overloaded)
+	return mkfn.Interface()
 }
 
 // Render takes a chart, optional values, and value overrides, and attempts to render the Go templates.
