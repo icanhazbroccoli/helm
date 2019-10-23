@@ -110,9 +110,19 @@ const (
 	ctxFloat
 )
 
-func guessCtx(in []reflect.Value) uint8 {
+func guessCtx(in []reflect.Value, isVariadic bool) uint8 {
 	var ctx uint8
-	for _, v := range in {
+	vals := make([]reflect.Value, len(in))
+	copy(vals, in)
+	if isVariadic && len(vals) > 1 {
+		variadic := vals[len(vals)-1]
+		vals = vals[:len(vals)-1]
+		for _, i := range variadic.Interface().([]interface{}) {
+			vals = append(vals, reflect.ValueOf(i))
+		}
+	}
+	for _, v := range vals {
+		fmt.Println(v.Kind())
 		switch v.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 			ctx |= ctxInt
@@ -123,36 +133,52 @@ func guessCtx(in []reflect.Value) uint8 {
 	return ctx
 }
 
+func convNum(i interface{}, ctx uint8) interface{} {
+	v := i
+	if num, ok := i.(json.Number); ok {
+		switch ctx {
+		case ctxInt:
+			if iv64, err := num.Int64(); err == nil {
+				v = iv64
+			}
+		case ctxFloat:
+			if fv64, err := num.Float64(); err == nil {
+				v = fv64
+			}
+		default:
+			if iv64, err := num.Int64(); err == nil {
+				v = iv64
+			} else if fv64, err := num.Float64(); err == nil {
+				v = fv64
+			}
+		}
+	}
+	return v
+}
+
 func overload(name string, fn interface{}) interface{} {
 	v := reflect.ValueOf(fn)
 	_overloaded := func(in []reflect.Value) []reflect.Value {
-		ctx := guessCtx(in)
+		ctx := guessCtx(in, v.Type().IsVariadic())
 		convs := make([]reflect.Value, 0, len(in))
 		for _, v := range in {
 			if v.Kind() == reflect.Interface {
-				e := v.Interface()
-				if num, ok := e.(json.Number); ok {
-					switch ctx {
-					case ctxInt:
-						if iv64, err := num.Int64(); err == nil {
-							v = reflect.ValueOf(iv64)
-						}
-					case ctxFloat:
-						if fv64, err := num.Float64(); err == nil {
-							v = reflect.ValueOf(fv64)
-						}
-					default:
-						if iv64, err := num.Int64(); err == nil {
-							v = reflect.ValueOf(iv64)
-						} else if fv64, err := num.Float64(); err == nil {
-							v = reflect.ValueOf(fv64)
-						}
-					}
-				}
+				e := convNum(v.Interface(), ctx)
+				v = reflect.ValueOf(e)
 			}
 			convs = append(convs, v)
 		}
 		if v.Type().IsVariadic() {
+			s := convs[len(convs)-1]
+			variadic := s.Slice(0, s.Len())
+			for ix, v := range in {
+				if v.Kind() == reflect.Interface {
+					e := convNum(v.Interface(), ctx)
+					v = reflect.ValueOf(e)
+					variadic[ix] = v
+				}
+			}
+			convs[len(convs)-1] = reflect.ValueOf(variadic)
 			return v.CallSlice(convs)
 		}
 		return v.Call(convs)
