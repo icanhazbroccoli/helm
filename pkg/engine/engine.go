@@ -17,6 +17,7 @@ limitations under the License.
 package engine
 
 import (
+	"C"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -26,6 +27,7 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+	_ "unsafe"
 
 	"github.com/Masterminds/sprig"
 
@@ -98,93 +100,166 @@ func FuncMap() template.FuncMap {
 		f[k] = v
 	}
 
-	for k, v := range f {
-		f[k] = overload(k, v)
+	//for k, v := range f {
+	//	f[k] = overload(k, v)
+	//}
+
+	stdTmplOverloads := map[string]interface{}{
+		//	"eq": _templateBuiltinEq,
+		//	"ge": _templateBuiltinGe,
+		//	"gt": _templateBuiltinGt,
+		//	"le": _templateBuiltinLe,
+		//	"lt": _templateBuiltinLt,
+		"ne": _templateBuiltinNe,
 	}
+	for fn, fun := range stdTmplOverloads {
+		f[fn] = overload(fn, fun)
+	}
+
+	f["int"] = overload("int", f["int"])
+	f["int64"] = overload("int64", f["int64"])
+	f["float64"] = overload("float64", f["float64"])
+	f["until"] = overload("until", f["until"])
+	f["untilStep"] = overload("untilStep", f["untilStep"])
+	f["splitn"] = overload("splitn", f["splitn"])
+	f["abbrev"] = overload("abbrev", f["abbrev"])
+	f["abbrevboth"] = overload("abbrevboth", f["abbrevboth"])
+	f["trunc"] = overload("trunc", f["trunc"])
+	f["substr"] = overload("substr", f["substr"])
+	f["repeat"] = overload("repeat", f["repeat"])
+	f["wrap"] = overload("wrap", f["wrap"])
+	f["wrapWith"] = overload("wrapWith", f["wrapWith"])
+	f["indent"] = overload("indent", f["indent"])
+	f["nindent"] = overload("nindent", f["nindent"])
+	f["plural"] = overload("plural", f["plural"])
 
 	return f
 }
 
-const (
-	ctxInt uint8 = 1 << (iota + 1)
-	ctxFloat
-)
+//go:linkname _templateBuiltinEq text/template.eq
+func _templateBuiltinEq(arg1 reflect.Value, arg2 ...reflect.Value) (bool, error)
 
-func guessCtx(in []reflect.Value, isVariadic bool) uint8 {
-	var ctx uint8
-	vals := make([]reflect.Value, len(in))
-	copy(vals, in)
-	if isVariadic && len(vals) > 1 {
-		variadic := vals[len(vals)-1]
-		vals = vals[:len(vals)-1]
-		for _, i := range variadic.Interface().([]interface{}) {
-			vals = append(vals, reflect.ValueOf(i))
-		}
+//go:linkname _templateBuiltinGe text/template.ge
+func _templateBuiltinGe(arg1, arg2 reflect.Value) (bool, error)
+
+//go:linkname _templateBuiltinGt text/template.gt
+func _templateBuiltinGt(arg1, arg2 reflect.Value) (bool, error)
+
+//go:linkname _templateBuiltinLe text/template.le
+func _templateBuiltinLe(arg1, arg2 reflect.Value) (bool, error)
+
+//go:linkname _templateBuiltinLt text/template.lt
+func _templateBuiltinLt(arg1, arg2 reflect.Value) (bool, error)
+
+//go:linkname _templateBuiltinNe text/template.ne
+func _templateBuiltinNe(arg1, arg2 reflect.Value) (bool, error)
+
+type NumericKind uint8
+
+var IntfType, IntType, Int64Type, Float64Type reflect.Type
+var CastNumericTo map[reflect.Kind]reflect.Kind
+
+func init() {
+	// A hack to get a type of an empty interface
+	f := func(interface{}) {}
+	IntfType = reflect.ValueOf(f).Type().In(0)
+	IntType = reflect.TypeOf(int(0))
+	Int64Type = reflect.TypeOf(int64(0))
+	Float64Type = reflect.TypeOf(float64(0))
+
+	CastNumericTo = make(map[reflect.Kind]reflect.Kind)
+	CastNumericTo[reflect.Interface] = 0
+	for _, k := range []reflect.Kind{reflect.Int, reflect.Uint} {
+		CastNumericTo[k] = reflect.Int
 	}
-	for _, v := range vals {
-		fmt.Println(v.Kind())
-		switch v.Kind() {
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-			ctx |= ctxInt
-		case reflect.Float32, reflect.Float64:
-			ctx |= ctxFloat
-		}
+	for _, k := range []reflect.Kind{reflect.Int32, reflect.Int64, reflect.Uint32, reflect.Uint64} {
+		CastNumericTo[k] = reflect.Int64
 	}
-	return ctx
+	for _, k := range []reflect.Kind{reflect.Float32, reflect.Float64} {
+		CastNumericTo[k] = reflect.Float64
+	}
 }
 
-func convNum(i interface{}, ctx uint8) interface{} {
-	v := i
-	if num, ok := i.(json.Number); ok {
-		switch ctx {
-		case ctxInt:
-			if iv64, err := num.Int64(); err == nil {
-				v = iv64
-			}
-		case ctxFloat:
-			if fv64, err := num.Float64(); err == nil {
-				v = fv64
-			}
-		default:
-			if iv64, err := num.Int64(); err == nil {
-				v = iv64
-			} else if fv64, err := num.Float64(); err == nil {
-				v = fv64
-			}
+func convJsonNumber(n json.Number, k reflect.Kind) (interface{}, error) {
+	switch k {
+	case reflect.Int:
+		iv, err := n.Int64()
+		if err != nil {
+			return nil, err
 		}
+		return int(iv), nil
+	case reflect.Int64:
+		return n.Int64()
+	case reflect.Float64:
+		return n.Float64()
+	case 0:
+		if v, err := convJsonNumber(n, reflect.Int64); err == nil {
+			return v, nil
+		} else if v, err := convJsonNumber(n, reflect.Float64); err == nil {
+			return v, nil
+		}
+		fallthrough
+	default:
+		return n.String(), nil
 	}
-	return v
 }
 
 func overload(name string, fn interface{}) interface{} {
-	v := reflect.ValueOf(fn)
-	_overloaded := func(in []reflect.Value) []reflect.Value {
-		ctx := guessCtx(in, v.Type().IsVariadic())
-		convs := make([]reflect.Value, 0, len(in))
-		for _, v := range in {
-			if v.Kind() == reflect.Interface {
-				e := convNum(v.Interface(), ctx)
-				v = reflect.ValueOf(e)
-			}
-			convs = append(convs, v)
+	fmt.Println("overloading function", name)
+
+	fnval := reflect.ValueOf(fn)
+	t := fnval.Type()
+
+	newin := make([]reflect.Type, 0, t.NumIn())
+	wantkind := make([]reflect.Kind, 0, t.NumIn())
+
+	for i := 0; i < t.NumIn(); i++ {
+		newt := t.In(i)
+		wantkind = append(wantkind, t.In(i).Kind())
+		if _, ok := CastNumericTo[t.In(i).Kind()]; ok {
+			newt = IntfType
 		}
-		if v.Type().IsVariadic() {
-			s := convs[len(convs)-1]
-			variadic := s.Slice(0, s.Len())
-			for ix, v := range in {
-				if v.Kind() == reflect.Interface {
-					e := convNum(v.Interface(), ctx)
-					v = reflect.ValueOf(e)
-					variadic[ix] = v
+		newin = append(newin, newt)
+	}
+
+	newout := make([]reflect.Type, 0, t.NumOut())
+	for i := 0; i < t.NumOut(); i++ {
+		newout = append(newout, t.Out(i))
+	}
+
+	fmt.Println(wantkind, newin, newout)
+
+	newfunctype := reflect.FuncOf(newin, newout, t.IsVariadic())
+	overloaded := func(in []reflect.Value) []reflect.Value {
+		for ix, i := range in {
+			fmt.Printf("ix: %d, k: %s\n", ix, i.Kind())
+			if i.Kind() == reflect.Interface {
+				itf := i.Interface()
+				if num, ok := itf.(json.Number); ok {
+					fmt.Println(wantkind[ix])
+					if cv, err := convJsonNumber(num, CastNumericTo[wantkind[ix]]); err == nil {
+						fmt.Println(cv, reflect.TypeOf(cv).Kind())
+						in[ix] = reflect.ValueOf(cv)
+					}
+				}
+				convs := map[reflect.Kind]reflect.Type{
+					reflect.Int:     IntType,
+					reflect.Int64:   Int64Type,
+					reflect.Float64: Float64Type,
+				}
+				if convtype, ok := convs[wantkind[ix]]; ok {
+					if reflect.TypeOf(itf).ConvertibleTo(convtype) {
+						in[ix] = reflect.ValueOf(itf).Convert(convtype)
+					}
 				}
 			}
-			convs[len(convs)-1] = reflect.ValueOf(variadic)
-			return v.CallSlice(convs)
 		}
-		return v.Call(convs)
+		if t.IsVariadic() {
+			return fnval.CallSlice(in)
+		}
+		return fnval.Call(in)
 	}
-	mkfn := reflect.MakeFunc(v.Type(), _overloaded)
-	return mkfn.Interface()
+	return reflect.MakeFunc(newfunctype, overloaded).Interface()
 }
 
 // Render takes a chart, optional values, and value overrides, and attempts to render the Go templates.

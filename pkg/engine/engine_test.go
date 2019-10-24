@@ -622,174 +622,176 @@ func TestTemplateFuncs(t *testing.T) {
 			Values:       `value: 3.14159265359`,
 			ExpectTplStr: "Evaluate tpl Value: 3.14159265359",
 		},
-		{
-			Name: "TplAdd1Function",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ .Values.value | add1}}" .}}`)},
+		/*
+			{
+				Name: "TplAdd1Function",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ .Values.value | add1}}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 43",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 43",
-		},
-		{
-			Name: "TplAddFunction",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ add .Values.value 1 2 3}}" .}}`)},
+			{
+				Name: "TplAddFunction",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ add .Values.value 1 2 3}}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 48",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 48",
-		},
-		{
-			Name: "TplSubFunction",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ sub .Values.value 20}}" .}}`)},
+			{
+				Name: "TplSubFunction",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ sub .Values.value 20}}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 22",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 22",
-		},
-		{
-			Name: "TplDivFunction",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ div .Values.value 2}}" .}}`)},
+			{
+				Name: "TplDivFunction",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ div .Values.value 2}}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 21",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 21",
-		},
-		{
-			Name: "TplModFunction",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ mod .Values.value 5}}" .}}`)},
+			{
+				Name: "TplModFunction",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ mod .Values.value 5}}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 2",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 2",
-		},
-		{
-			Name: "TplMulFunction",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ mul .Values.value 1 2 3}}" .}}`)},
+			{
+				Name: "TplMulFunction",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ mul .Values.value 1 2 3}}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 252",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 252",
-		},
-		{
-			Name: "TplMaxFunction",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ max .Values.value 100 1 0 -1}}" .}}`)},
+			{
+				Name: "TplMaxFunction",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ max .Values.value 100 1 0 -1}}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 100",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 100",
-		},
-		{
-			Name: "TplMinFunction",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ min .Values.value 100 1 0 -1}}" .}}`)},
+			{
+				Name: "TplMinFunction",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ min .Values.value 100 1 0 -1}}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: -1",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: -1",
-		},
-		{
-			Name: "TplCeilFunction",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ ceil .Values.value }}" .}}`)},
+			{
+				Name: "TplCeilFunction",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ ceil .Values.value }}" .}}`)},
+				},
+				Values:       `value: 3.14159265359`,
+				ExpectTplStr: "Evaluate tpl Value: 4",
 			},
-			Values:       `value: 3.14159265359`,
-			ExpectTplStr: "Evaluate tpl Value: 4",
-		},
-		{
-			Name: "TplFloorFunction",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ floor .Values.value }}" .}}`)},
+			{
+				Name: "TplFloorFunction",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ floor .Values.value }}" .}}`)},
+				},
+				Values:       `value: 3.14159265359`,
+				ExpectTplStr: "Evaluate tpl Value: 3",
 			},
-			Values:       `value: 3.14159265359`,
-			ExpectTplStr: "Evaluate tpl Value: 3",
-		},
-		{
-			Name: "TplRoundFunction",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ round .Values.value 2 }}" .}}`)},
+			{
+				Name: "TplRoundFunction",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "Value: {{ round .Values.value 2 }}" .}}`)},
+				},
+				Values:       `value: 3.14159265359`,
+				ExpectTplStr: "Evaluate tpl Value: 3.14",
 			},
-			Values:       `value: 3.14159265359`,
-			ExpectTplStr: "Evaluate tpl Value: 3.14",
-		},
-		{
-			Name: "TplEqFunctionInt",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if eq .Values.value 42 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+			{
+				Name: "TplEqFunctionInt",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if eq .Values.value 42 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 42",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 42",
-		},
-		{
-			Name: "TplEqFunctionFloat",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if eq .Values.value 42.0 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+			{
+				Name: "TplEqFunctionFloat",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if eq .Values.value 42.0 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 42",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 42",
-		},
-		{
-			Name: "TplGtFunctionInt",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if gt .Values.value 41 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+			{
+				Name: "TplGtFunctionInt",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if gt .Values.value 41 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 42",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 42",
-		},
-		{
-			Name: "TplGtFunctionFloat",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if gt .Values.value 41.0 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+			{
+				Name: "TplGtFunctionFloat",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if gt .Values.value 41.0 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 42",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 42",
-		},
-		{
-			Name: "TplGeFunctionInt",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if ge .Values.value 42 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+			{
+				Name: "TplGeFunctionInt",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if ge .Values.value 42 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 42",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 42",
-		},
-		{
-			Name: "TplGeFunctionFloat",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if ge .Values.value 42.0 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+			{
+				Name: "TplGeFunctionFloat",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if ge .Values.value 42.0 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 42",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 42",
-		},
-		{
-			Name: "TplLtFunctionInt",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if lt .Values.value 43 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+			{
+				Name: "TplLtFunctionInt",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if lt .Values.value 43 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 42",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 42",
-		},
-		{
-			Name: "TplLtFunctionFloat",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if lt .Values.value 43.0 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+			{
+				Name: "TplLtFunctionFloat",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if lt .Values.value 43.0 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 42",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 42",
-		},
-		{
-			Name: "TplLeFunctionInt",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if le .Values.value 42 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+			{
+				Name: "TplLeFunctionInt",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if le .Values.value 42 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 42",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 42",
-		},
-		{
-			Name: "TplLeFunctionFloat",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if le .Values.value 42.0 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+			{
+				Name: "TplLeFunctionFloat",
+				Templates: []*chart.Template{
+					{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ if le .Values.value 42.0 }}Value: {{ .Values.value }}{{ end }}" .}}`)},
+				},
+				Values:       `value: 42`,
+				ExpectTplStr: "Evaluate tpl Value: 42",
 			},
-			Values:       `value: 42`,
-			ExpectTplStr: "Evaluate tpl Value: 42",
-		},
+		*/
 		{
 			Name: "TplNeFunctionInt",
 			Templates: []*chart.Template{
@@ -918,27 +920,29 @@ func TestTemplateFuncs(t *testing.T) {
 			Values:       `value: 42`,
 			ExpectTplStr: "Evaluate tpl many anchovies",
 		},
-		{
-			Name: "TplSliceFunctionNoOffset",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ slice .Values.slice .Values.value }}" .}}`)},
-			},
-			Values: `
-value: 42
-slice: [1,2,3,4,5]`,
-			ExpectTplStr: "Evaluate tpl [3 4 5]",
-		},
-		{
-			Name: "TplSliceFunctionWithOffset",
-			Templates: []*chart.Template{
-				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ slice .Values.slice .Values.start .Values.end }}" .}}`)},
-			},
-			Values: `
-slice: [1,2,3,4,5]
-start: 2
-end: 4`,
-			ExpectTplStr: "Evaluate tpl [3 4]",
-		},
+		/*
+					{
+						Name: "TplSliceFunctionNoOffset",
+						Templates: []*chart.Template{
+							{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ slice .Values.slice .Values.value }}" .}}`)},
+						},
+						Values: `
+			value: 42
+			slice: [1,2,3,4,5]`,
+						ExpectTplStr: "Evaluate tpl [3 4 5]",
+					},
+					{
+						Name: "TplSliceFunctionWithOffset",
+						Templates: []*chart.Template{
+							{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ slice .Values.slice .Values.start .Values.end }}" .}}`)},
+						},
+						Values: `
+			slice: [1,2,3,4,5]
+			start: 2
+			end: 4`,
+						ExpectTplStr: "Evaluate tpl [3 4]",
+					},
+		*/
 	}
 
 	for _, tt := range tests {
