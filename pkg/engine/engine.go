@@ -116,22 +116,22 @@ func FuncMap() template.FuncMap {
 		f[fn] = overload(fn, fun)
 	}
 
-	f["int"] = overload("int", f["int"])
-	f["int64"] = overload("int64", f["int64"])
-	f["float64"] = overload("float64", f["float64"])
-	f["until"] = overload("until", f["until"])
-	f["untilStep"] = overload("untilStep", f["untilStep"])
-	f["splitn"] = overload("splitn", f["splitn"])
-	f["abbrev"] = overload("abbrev", f["abbrev"])
-	f["abbrevboth"] = overload("abbrevboth", f["abbrevboth"])
-	f["trunc"] = overload("trunc", f["trunc"])
-	f["substr"] = overload("substr", f["substr"])
-	f["repeat"] = overload("repeat", f["repeat"])
-	f["wrap"] = overload("wrap", f["wrap"])
-	f["wrapWith"] = overload("wrapWith", f["wrapWith"])
-	f["indent"] = overload("indent", f["indent"])
-	f["nindent"] = overload("nindent", f["nindent"])
-	f["plural"] = overload("plural", f["plural"])
+	//f["int"] = overload("int", f["int"])
+	//f["int64"] = overload("int64", f["int64"])
+	//f["float64"] = overload("float64", f["float64"])
+	//f["until"] = overload("until", f["until"])
+	//f["untilStep"] = overload("untilStep", f["untilStep"])
+	//f["splitn"] = overload("splitn", f["splitn"])
+	//f["abbrev"] = overload("abbrev", f["abbrev"])
+	//f["abbrevboth"] = overload("abbrevboth", f["abbrevboth"])
+	//f["trunc"] = overload("trunc", f["trunc"])
+	//f["substr"] = overload("substr", f["substr"])
+	//f["repeat"] = overload("repeat", f["repeat"])
+	//f["wrap"] = overload("wrap", f["wrap"])
+	//f["wrapWith"] = overload("wrapWith", f["wrapWith"])
+	//f["indent"] = overload("indent", f["indent"])
+	//f["nindent"] = overload("nindent", f["nindent"])
+	//f["plural"] = overload("plural", f["plural"])
 
 	return f
 }
@@ -158,6 +158,7 @@ type NumericKind uint8
 
 var IntfType, IntType, Int64Type, Float64Type reflect.Type
 var CastNumericTo map[reflect.Kind]reflect.Kind
+var convs map[reflect.Kind]reflect.Type
 
 func init() {
 	// A hack to get a type of an empty interface
@@ -178,6 +179,11 @@ func init() {
 	for _, k := range []reflect.Kind{reflect.Float32, reflect.Float64} {
 		CastNumericTo[k] = reflect.Float64
 	}
+	convs = map[reflect.Kind]reflect.Type{
+		reflect.Int:     IntType,
+		reflect.Int64:   Int64Type,
+		reflect.Float64: Float64Type,
+	}
 }
 
 func convJsonNumber(n json.Number, k reflect.Kind) (interface{}, error) {
@@ -193,9 +199,9 @@ func convJsonNumber(n json.Number, k reflect.Kind) (interface{}, error) {
 	case reflect.Float64:
 		return n.Float64()
 	case 0:
-		if v, err := convJsonNumber(n, reflect.Int64); err == nil {
+		if v, err := convJsonNumber(n, reflect.Float64); err == nil {
 			return v, nil
-		} else if v, err := convJsonNumber(n, reflect.Float64); err == nil {
+		} else if v, err := convJsonNumber(n, reflect.Int64); err == nil {
 			return v, nil
 		}
 		fallthrough
@@ -234,23 +240,10 @@ func overload(name string, fn interface{}) interface{} {
 		for ix, i := range in {
 			fmt.Printf("ix: %d, k: %s\n", ix, i.Kind())
 			if i.Kind() == reflect.Interface {
-				itf := i.Interface()
-				if num, ok := itf.(json.Number); ok {
-					fmt.Println(wantkind[ix])
-					if cv, err := convJsonNumber(num, CastNumericTo[wantkind[ix]]); err == nil {
-						fmt.Println(cv, reflect.TypeOf(cv).Kind())
-						in[ix] = reflect.ValueOf(cv)
-					}
-				}
-				convs := map[reflect.Kind]reflect.Type{
-					reflect.Int:     IntType,
-					reflect.Int64:   Int64Type,
-					reflect.Float64: Float64Type,
-				}
-				if convtype, ok := convs[wantkind[ix]]; ok {
-					if reflect.TypeOf(itf).ConvertibleTo(convtype) {
-						in[ix] = reflect.ValueOf(itf).Convert(convtype)
-					}
+				in[ix] = convIntf(i, wantkind[ix])
+			} else if i.Kind() == reflect.Struct {
+				if rv, ok := i.Interface().(reflect.Value); ok {
+					in[ix] = reflect.ValueOf(convIntf(rv, wantkind[ix]))
 				}
 			}
 		}
@@ -260,6 +253,23 @@ func overload(name string, fn interface{}) interface{} {
 		return fnval.Call(in)
 	}
 	return reflect.MakeFunc(newfunctype, overloaded).Interface()
+}
+
+func convIntf(v reflect.Value, k reflect.Kind) reflect.Value {
+	i := v.Interface()
+	if num, ok := i.(json.Number); ok {
+		fmt.Println(k)
+		if cv, err := convJsonNumber(num, CastNumericTo[k]); err == nil {
+			fmt.Println(cv, reflect.TypeOf(cv).Kind())
+			return reflect.ValueOf(cv)
+		}
+	}
+	if convtype, ok := convs[k]; ok {
+		if reflect.TypeOf(i).ConvertibleTo(convtype) {
+			return reflect.ValueOf(i).Convert(convtype)
+		}
+	}
+	return v
 }
 
 // Render takes a chart, optional values, and value overrides, and attempts to render the Go templates.
