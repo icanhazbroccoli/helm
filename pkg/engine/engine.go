@@ -17,17 +17,13 @@ limitations under the License.
 package engine
 
 import (
-	"C"
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"log"
 	"path"
-	"reflect"
 	"sort"
 	"strings"
 	"text/template"
-	_ "unsafe"
 
 	"github.com/Masterminds/sprig"
 
@@ -134,142 +130,6 @@ func FuncMap() template.FuncMap {
 	//f["plural"] = overload("plural", f["plural"])
 
 	return f
-}
-
-//go:linkname _templateBuiltinEq text/template.eq
-func _templateBuiltinEq(arg1 reflect.Value, arg2 ...reflect.Value) (bool, error)
-
-//go:linkname _templateBuiltinGe text/template.ge
-func _templateBuiltinGe(arg1, arg2 reflect.Value) (bool, error)
-
-//go:linkname _templateBuiltinGt text/template.gt
-func _templateBuiltinGt(arg1, arg2 reflect.Value) (bool, error)
-
-//go:linkname _templateBuiltinLe text/template.le
-func _templateBuiltinLe(arg1, arg2 reflect.Value) (bool, error)
-
-//go:linkname _templateBuiltinLt text/template.lt
-func _templateBuiltinLt(arg1, arg2 reflect.Value) (bool, error)
-
-//go:linkname _templateBuiltinNe text/template.ne
-func _templateBuiltinNe(arg1, arg2 reflect.Value) (bool, error)
-
-type NumericKind uint8
-
-var IntfType, IntType, Int64Type, Float64Type reflect.Type
-var CastNumericTo map[reflect.Kind]reflect.Kind
-var convs map[reflect.Kind]reflect.Type
-
-func init() {
-	// A hack to get a type of an empty interface
-	f := func(interface{}) {}
-	IntfType = reflect.ValueOf(f).Type().In(0)
-	IntType = reflect.TypeOf(int(0))
-	Int64Type = reflect.TypeOf(int64(0))
-	Float64Type = reflect.TypeOf(float64(0))
-
-	CastNumericTo = make(map[reflect.Kind]reflect.Kind)
-	CastNumericTo[reflect.Interface] = 0
-	for _, k := range []reflect.Kind{reflect.Int, reflect.Uint} {
-		CastNumericTo[k] = reflect.Int
-	}
-	for _, k := range []reflect.Kind{reflect.Int32, reflect.Int64, reflect.Uint32, reflect.Uint64} {
-		CastNumericTo[k] = reflect.Int64
-	}
-	for _, k := range []reflect.Kind{reflect.Float32, reflect.Float64} {
-		CastNumericTo[k] = reflect.Float64
-	}
-	convs = map[reflect.Kind]reflect.Type{
-		reflect.Int:     IntType,
-		reflect.Int64:   Int64Type,
-		reflect.Float64: Float64Type,
-	}
-}
-
-func convJsonNumber(n json.Number, k reflect.Kind) (interface{}, error) {
-	switch k {
-	case reflect.Int:
-		iv, err := n.Int64()
-		if err != nil {
-			return nil, err
-		}
-		return int(iv), nil
-	case reflect.Int64:
-		return n.Int64()
-	case reflect.Float64:
-		return n.Float64()
-	case 0:
-		if v, err := convJsonNumber(n, reflect.Float64); err == nil {
-			return v, nil
-		} else if v, err := convJsonNumber(n, reflect.Int64); err == nil {
-			return v, nil
-		}
-		fallthrough
-	default:
-		return n.String(), nil
-	}
-}
-
-func overload(name string, fn interface{}) interface{} {
-	fmt.Println("overloading function", name)
-
-	fnval := reflect.ValueOf(fn)
-	t := fnval.Type()
-
-	newin := make([]reflect.Type, 0, t.NumIn())
-	wantkind := make([]reflect.Kind, 0, t.NumIn())
-
-	for i := 0; i < t.NumIn(); i++ {
-		newt := t.In(i)
-		wantkind = append(wantkind, t.In(i).Kind())
-		if _, ok := CastNumericTo[t.In(i).Kind()]; ok {
-			newt = IntfType
-		}
-		newin = append(newin, newt)
-	}
-
-	newout := make([]reflect.Type, 0, t.NumOut())
-	for i := 0; i < t.NumOut(); i++ {
-		newout = append(newout, t.Out(i))
-	}
-
-	fmt.Println(wantkind, newin, newout)
-
-	newfunctype := reflect.FuncOf(newin, newout, t.IsVariadic())
-	overloaded := func(in []reflect.Value) []reflect.Value {
-		for ix, i := range in {
-			fmt.Printf("ix: %d, k: %s\n", ix, i.Kind())
-			if i.Kind() == reflect.Interface {
-				in[ix] = convIntf(i, wantkind[ix])
-			} else if i.Kind() == reflect.Struct {
-				if rv, ok := i.Interface().(reflect.Value); ok {
-					in[ix] = reflect.ValueOf(convIntf(rv, wantkind[ix]))
-				}
-			}
-		}
-		if t.IsVariadic() {
-			return fnval.CallSlice(in)
-		}
-		return fnval.Call(in)
-	}
-	return reflect.MakeFunc(newfunctype, overloaded).Interface()
-}
-
-func convIntf(v reflect.Value, k reflect.Kind) reflect.Value {
-	i := v.Interface()
-	if num, ok := i.(json.Number); ok {
-		fmt.Println(k)
-		if cv, err := convJsonNumber(num, CastNumericTo[k]); err == nil {
-			fmt.Println(cv, reflect.TypeOf(cv).Kind())
-			return reflect.ValueOf(cv)
-		}
-	}
-	if convtype, ok := convs[k]; ok {
-		if reflect.TypeOf(i).ConvertibleTo(convtype) {
-			return reflect.ValueOf(i).Convert(convtype)
-		}
-	}
-	return v
 }
 
 // Render takes a chart, optional values, and value overrides, and attempts to render the Go templates.
