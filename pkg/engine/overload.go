@@ -112,6 +112,92 @@ func isFloatKind(kind reflect.Kind) bool {
 	}
 }
 
+func getInputContext(in []reflect.Value, isVar bool) (uint8, bool) {
+	var ctx uint8
+	var allref bool = true
+	for _, i := range in {
+		if i.Kind() == reflect.Struct {
+			if v, ok := i.Interface().(reflect.Value); ok {
+				realkind := v.Kind()
+				fmt.Println("realkind:", realkind)
+				if isFloatKind(realkind) {
+					ctx |= ctx_float
+				} else if isIntKind(realkind) {
+					ctx |= ctx_int
+				}
+				continue
+			}
+		} else if i.Kind() == reflect.Interface {
+			// a cool trick from text/template
+			v := reflect.ValueOf(i.Interface())
+			realkind := v.Kind()
+			fmt.Printf("real kind: %s\n", v.Kind())
+			if isFloatKind(realkind) {
+				ctx |= ctx_float
+			} else if isIntKind(realkind) {
+				ctx |= ctx_int
+			}
+		}
+		allref = false
+		//break
+	}
+	if isVar && len(in) > 0 {
+		v := in[len(in)-1]
+		varin := make([]reflect.Value, 0, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			fmt.Println("varv kind:", v.Index(i).Kind())
+			varin = append(varin, v.Index(i))
+		}
+		vctx, vallref := getInputContext(varin, false)
+		fmt.Printf("vctx: %03b, vallref: %t\n", vctx, vallref)
+		return vctx | ctx, allref && vallref
+	}
+	return ctx, allref
+}
+
+func convertInput(in []reflect.Value, wantkind []reflect.Kind, isVar bool) []reflect.Value {
+	res := make([]reflect.Value, 0, len(in))
+
+	argctx, allref := getInputContext(in, isVar)
+	fmt.Printf("allref: %t\n", allref)
+
+	for ix, i := range in {
+		fmt.Printf("ix: %d, k: %s\n", ix, i.Kind())
+		cv := in[ix]
+		if i.Kind() == reflect.Interface {
+			cv = convIntf(i, wantkind[ix], argctx)
+		} else if i.Kind() == reflect.Struct {
+			if rv, ok := i.Interface().(reflect.Value); ok {
+				wk := wantkind[ix]
+				fmt.Printf("wantkind: %s, argctx: %03b\n", wk, argctx)
+				if allref && ((argctx & ctx_float) > 0) {
+					fmt.Println("enforcing float64")
+					wk = reflect.Float64
+				}
+				cv = reflect.ValueOf(convIntf(rv, wk, argctx))
+			}
+		}
+		res = append(res, cv)
+	}
+	if isVar && len(res) > 0 {
+		v := in[len(res)-1]
+		varin := make([]reflect.Value, 0, v.Len())
+		varwk := make([]reflect.Kind, 0, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			varin = append(varin, v.Index(i))
+			//TODO: hardcoding Interface kind because i'm lazy
+			varwk = append(varwk, reflect.Interface)
+		}
+		varin = convertInput(varin, varwk, false)
+		varintf := make([]interface{}, 0, len(varin))
+		for _, vi := range varin {
+			varintf = append(varintf, vi.Interface())
+		}
+		res[len(res)-1] = reflect.ValueOf(varintf)
+	}
+	return res
+}
+
 func overload(name string, fn interface{}) interface{} {
 	fmt.Println("overloading function", name)
 
@@ -148,46 +234,11 @@ func overload(name string, fn interface{}) interface{} {
 
 	newfunctype := reflect.FuncOf(newin, newout, t.IsVariadic())
 	overloaded := func(in []reflect.Value) []reflect.Value {
-		allRefVal := true
-		var argctx uint8
-		for _, i := range in {
-			if i.Kind() == reflect.Struct {
-				if v, ok := i.Interface().(reflect.Value); ok {
-					realkind := v.Kind()
-					fmt.Println("realkind:", realkind)
-					if isFloatKind(realkind) {
-						argctx |= ctx_float
-					} else if isIntKind(realkind) {
-						argctx |= ctx_int
-					}
-					continue
-				}
-			}
-			allRefVal = false
-			break
-		}
-		fmt.Printf("allrefval: %t\n", allRefVal)
-		for ix, i := range in {
-			fmt.Printf("ix: %d, k: %s\n", ix, i.Kind())
-			if i.Kind() == reflect.Interface {
-				in[ix] = convIntf(i, wantkind[ix], argctx)
-			} else if i.Kind() == reflect.Struct {
-				if rv, ok := i.Interface().(reflect.Value); ok {
-					wk := wantkind[ix]
-					fmt.Printf("wantkind: %s, argctx: %03b\n", wk, argctx)
-					if allRefVal && ((argctx & ctx_float) > 0) {
-						fmt.Println("enforcing float64")
-						wk = reflect.Float64
-					}
-					in[ix] = reflect.ValueOf(convIntf(rv, wk, argctx))
-				}
-			}
-		}
-		fmt.Printf("in args: %#v\n", in)
+		convin := convertInput(in, wantkind, t.IsVariadic())
 		if t.IsVariadic() {
-			return fnval.CallSlice(in)
+			return fnval.CallSlice(convin)
 		}
-		return fnval.Call(in)
+		return fnval.Call(convin)
 	}
 	return reflect.MakeFunc(newfunctype, overloaded).Interface()
 }
