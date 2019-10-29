@@ -58,7 +58,7 @@ func init() {
 	}
 }
 
-func convJsonNumber(n json.Number, k reflect.Kind, ctx uint8) (interface{}, error) {
+func convJsonNumber(n json.Number, k reflect.Kind, ctx argctx) (interface{}, error) {
 	switch k {
 	case reflect.Int:
 		iv, err := n.Int64()
@@ -71,12 +71,12 @@ func convJsonNumber(n json.Number, k reflect.Kind, ctx uint8) (interface{}, erro
 	case reflect.Float64:
 		return n.Float64()
 	case 0:
-		switch ctx {
-		case ctx_int:
+		switch {
+		case ctx&ctx_int > 0:
 			if v, err := convJsonNumber(n, reflect.Int64, ctx); err == nil {
 				return v, nil
 			}
-		case ctx_float:
+		case ctx&ctx_float > 0:
 			if v, err := convJsonNumber(n, reflect.Float64, ctx); err == nil {
 				return v, nil
 			}
@@ -88,10 +88,14 @@ func convJsonNumber(n json.Number, k reflect.Kind, ctx uint8) (interface{}, erro
 	}
 }
 
+type argctx uint8
+
 const (
-	ctx_empty uint8 = 1 << iota
+	ctx_empty argctx = 1 << iota
 	ctx_int
 	ctx_float
+	ctx_allref
+	ctx_allnum
 )
 
 func isIntKind(kind reflect.Kind) bool {
@@ -112,9 +116,9 @@ func isFloatKind(kind reflect.Kind) bool {
 	}
 }
 
-func getInputContext(in []reflect.Value, isVar bool) (uint8, bool) {
-	var ctx uint8
-	var allref bool = true
+func getInputContext(in []reflect.Value, isVar bool) argctx {
+	var ctx argctx
+	ctx |= ctx_allref
 	for _, i := range in {
 		if i.Kind() == reflect.Struct {
 			if v, ok := i.Interface().(reflect.Value); ok {
@@ -138,8 +142,7 @@ func getInputContext(in []reflect.Value, isVar bool) (uint8, bool) {
 				ctx |= ctx_int
 			}
 		}
-		allref = false
-		//break
+		ctx &= ^ctx_allref
 	}
 	if isVar && len(in) > 0 {
 		v := in[len(in)-1]
@@ -148,31 +151,36 @@ func getInputContext(in []reflect.Value, isVar bool) (uint8, bool) {
 			fmt.Println("varv kind:", v.Index(i).Kind())
 			varin = append(varin, v.Index(i))
 		}
-		vctx, vallref := getInputContext(varin, false)
-		fmt.Printf("vctx: %03b, vallref: %t\n", vctx, vallref)
-		return vctx | ctx, allref && vallref
+		vctx := getInputContext(varin, false)
+		msk := ^ctx_allref
+		if ctx&ctx_allref > 0 {
+			msk |= ctx_allref
+		}
+		fmt.Printf("vctx: %08b, vallref: %t\n", vctx, (vctx&ctx_allref) > 0)
+
+		return (vctx | ctx) & msk
 	}
-	return ctx, allref
+	return ctx
 }
 
 func convertInput(in []reflect.Value, wantkind []reflect.Kind, isVar bool) []reflect.Value {
 	res := make([]reflect.Value, 0, len(in))
 
-	argctx, allref := getInputContext(in, isVar)
-	fmt.Printf("allref: %t\n", allref)
+	ctx := getInputContext(in, isVar)
+	fmt.Printf("allref: %t\n", (ctx&ctx_allref) > 0)
 
-	conv := func(i reflect.Value, wk reflect.Kind, argctx uint8) reflect.Value {
+	conv := func(i reflect.Value, wk reflect.Kind, ctx argctx) reflect.Value {
 		cv := i
 		if i.Kind() == reflect.Interface {
-			cv = convIntf(i, wk, argctx)
+			cv = convIntf(i, wk, ctx)
 		} else if i.Kind() == reflect.Struct {
 			if rv, ok := i.Interface().(reflect.Value); ok {
-				fmt.Printf("wantkind: %s, argctx: %03b\n", wk, argctx)
-				if allref && ((argctx & ctx_float) > 0) {
+				fmt.Printf("wantkind: %s, ctx: %08b\n", wk, ctx)
+				if ((ctx & ctx_allref) > 0) && ((ctx & ctx_float) > 0) {
 					fmt.Println("enforcing float64")
 					wk = reflect.Float64
 				}
-				cv = reflect.ValueOf(convIntf(rv, wk, argctx))
+				cv = reflect.ValueOf(convIntf(rv, wk, ctx))
 			}
 		}
 		return cv
@@ -180,7 +188,7 @@ func convertInput(in []reflect.Value, wantkind []reflect.Kind, isVar bool) []ref
 
 	for ix, iv := range in {
 		fmt.Printf("ix: %d, k: %s\n", ix, iv.Kind())
-		cv := conv(iv, wantkind[ix], argctx)
+		cv := conv(iv, wantkind[ix], ctx)
 		res = append(res, cv)
 	}
 	if isVar && len(res) > 0 {
@@ -188,7 +196,7 @@ func convertInput(in []reflect.Value, wantkind []reflect.Kind, isVar bool) []ref
 		fmt.Printf("variadic func, len of the last arg: %d\n", v.Len())
 		for i := 0; i < v.Len(); i++ {
 			ixv := v.Index(i)
-			cv := conv(ixv, reflect.Interface, argctx)
+			cv := conv(ixv, reflect.Interface, ctx)
 			ixv.Set(cv)
 		}
 	}
@@ -204,7 +212,7 @@ func overload(name string, fn interface{}) interface{} {
 	newin := make([]reflect.Type, 0, t.NumIn())
 	wantkind := make([]reflect.Kind, 0, t.NumIn())
 
-	var inctx uint8
+	var inctx argctx
 	for i := 0; i < t.NumIn(); i++ {
 		newt := t.In(i)
 		wantkind = append(wantkind, t.In(i).Kind())
@@ -220,7 +228,7 @@ func overload(name string, fn interface{}) interface{} {
 		newin = append(newin, newt)
 	}
 
-	fmt.Printf("ctx: %03b\n", inctx)
+	fmt.Printf("ctx: %08b\n", inctx)
 
 	newout := make([]reflect.Type, 0, t.NumOut())
 	for i := 0; i < t.NumOut(); i++ {
@@ -240,7 +248,7 @@ func overload(name string, fn interface{}) interface{} {
 	return reflect.MakeFunc(newfunctype, overloaded).Interface()
 }
 
-func convIntf(v reflect.Value, k reflect.Kind, ctx uint8) reflect.Value {
+func convIntf(v reflect.Value, k reflect.Kind, ctx argctx) reflect.Value {
 	i := v.Interface()
 	if num, ok := i.(json.Number); ok {
 		fmt.Println(k, CastNumericTo[k])
