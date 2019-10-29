@@ -128,7 +128,7 @@ func getInputContext(in []reflect.Value, isVar bool) (uint8, bool) {
 				continue
 			}
 		} else if i.Kind() == reflect.Interface {
-			// a cool trick from text/template
+			// a trick from text/template
 			v := reflect.ValueOf(i.Interface())
 			realkind := v.Kind()
 			fmt.Printf("real kind: %s\n", v.Kind())
@@ -161,14 +161,12 @@ func convertInput(in []reflect.Value, wantkind []reflect.Kind, isVar bool) []ref
 	argctx, allref := getInputContext(in, isVar)
 	fmt.Printf("allref: %t\n", allref)
 
-	for ix, i := range in {
-		fmt.Printf("ix: %d, k: %s\n", ix, i.Kind())
-		cv := in[ix]
+	conv := func(i reflect.Value, wk reflect.Kind, argctx uint8) reflect.Value {
+		cv := i
 		if i.Kind() == reflect.Interface {
-			cv = convIntf(i, wantkind[ix], argctx)
+			cv = convIntf(i, wk, argctx)
 		} else if i.Kind() == reflect.Struct {
 			if rv, ok := i.Interface().(reflect.Value); ok {
-				wk := wantkind[ix]
 				fmt.Printf("wantkind: %s, argctx: %03b\n", wk, argctx)
 				if allref && ((argctx & ctx_float) > 0) {
 					fmt.Println("enforcing float64")
@@ -177,23 +175,22 @@ func convertInput(in []reflect.Value, wantkind []reflect.Kind, isVar bool) []ref
 				cv = reflect.ValueOf(convIntf(rv, wk, argctx))
 			}
 		}
+		return cv
+	}
+
+	for ix, iv := range in {
+		fmt.Printf("ix: %d, k: %s\n", ix, iv.Kind())
+		cv := conv(iv, wantkind[ix], argctx)
 		res = append(res, cv)
 	}
 	if isVar && len(res) > 0 {
-		v := in[len(res)-1]
-		varin := make([]reflect.Value, 0, v.Len())
-		varwk := make([]reflect.Kind, 0, v.Len())
+		v := res[len(res)-1]
+		fmt.Printf("variadic func, len of the last arg: %d\n", v.Len())
 		for i := 0; i < v.Len(); i++ {
-			varin = append(varin, v.Index(i))
-			//TODO: hardcoding Interface kind because i'm lazy
-			varwk = append(varwk, reflect.Interface)
+			ixv := v.Index(i)
+			cv := conv(ixv, reflect.Interface, argctx)
+			ixv.Set(cv)
 		}
-		varin = convertInput(varin, varwk, false)
-		varintf := make([]interface{}, 0, len(varin))
-		for _, vi := range varin {
-			varintf = append(varintf, vi.Interface())
-		}
-		res[len(res)-1] = reflect.ValueOf(varintf)
 	}
 	return res
 }
