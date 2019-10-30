@@ -924,7 +924,7 @@ func TestTemplateFuncs(t *testing.T) {
 				{Name: "templates/base", Data: []byte(`Evaluate tpl {{tpl "{{ slice .Values.slice .Values.value }}" .}}`)},
 			},
 			Values: `
-value: 42
+value: 2
 slice: [1,2,3,4,5]`,
 			ExpectTplStr: "Evaluate tpl [3 4 5]",
 		},

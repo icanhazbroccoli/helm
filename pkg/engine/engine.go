@@ -107,7 +107,7 @@ func FuncMap() template.FuncMap {
 		"le": _templateBuiltinLe,
 		"lt": _templateBuiltinLt,
 		"ne": _templateBuiltinNe,
-		//"add": f["add"],
+		//"slice": f["slice"],
 	}
 	for fn, fun := range stdTmplOverloads {
 		f[fn] = overload(fn, fun)
