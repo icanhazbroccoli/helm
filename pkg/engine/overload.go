@@ -86,32 +86,27 @@ func isFloatKind(kind reflect.Kind) bool {
 }
 
 func guessValCtx(in []reflect.Value, isVar bool) argctx {
-	var ctx argctx
+	var ctx, msk argctx
 	ctx |= ctx_allref
 	for _, i := range in {
-		if i.Kind() == reflect.Struct {
+		msk = ^ctx_allref
+		realkind := i.Kind()
+		switch i.Kind() {
+		case reflect.Struct:
 			if v, ok := i.Interface().(reflect.Value); ok {
-				realkind := v.Kind()
-				fmt.Println("realkind:", realkind)
-				if isFloatKind(realkind) {
-					ctx |= ctx_float
-				} else if isIntKind(realkind) {
-					ctx |= ctx_int
-				}
-				continue
+				realkind = v.Kind()
 			}
-		} else if i.Kind() == reflect.Interface {
-			// a trick from text/template
+			msk |= ctx_allref
+		case reflect.Interface:
 			v := reflect.ValueOf(i.Interface())
-			realkind := v.Kind()
-			fmt.Printf("real kind: %s\n", v.Kind())
-			if isFloatKind(realkind) {
-				ctx |= ctx_float
-			} else if isIntKind(realkind) {
-				ctx |= ctx_int
-			}
+			realkind = v.Kind()
 		}
-		ctx &= ^ctx_allref
+		if isFloatKind(realkind) {
+			ctx |= ctx_float
+		} else if isIntKind(realkind) {
+			ctx |= ctx_int
+		}
+		ctx &= msk
 	}
 	if isVar && len(in) > 0 {
 		v := in[len(in)-1]
@@ -134,9 +129,10 @@ func guessValCtx(in []reflect.Value, isVar bool) argctx {
 
 func convVal(i reflect.Value, wk reflect.Kind, ctx argctx) reflect.Value {
 	cv := i
-	if i.Kind() == reflect.Interface {
+	switch i.Kind() {
+	case reflect.Interface:
 		cv = convIntf(i, wk, ctx)
-	} else if i.Kind() == reflect.Struct {
+	case reflect.Struct:
 		if rv, ok := i.Interface().(reflect.Value); ok {
 			fmt.Printf("wantkind: %s, ctx: %08b\n", wk, ctx)
 			if ((ctx & ctx_allref) > 0) && ((ctx & ctx_float) > 0) {
@@ -172,7 +168,6 @@ func convJsonNumber(n json.Number, k reflect.Kind, ctx argctx) (interface{}, err
 				return v, nil
 			}
 		}
-
 		fallthrough
 	default:
 		return n.String(), nil
@@ -199,8 +194,8 @@ func convIntf(v reflect.Value, k reflect.Kind, ctx argctx) reflect.Value {
 	return v
 }
 
-func convertInput(in []reflect.Value, wantkind []reflect.Kind, isVar bool) []reflect.Value {
-	res := make([]reflect.Value, 0, len(in))
+func convertInputArgs(in []reflect.Value, wantkind []reflect.Kind, isVar bool) []reflect.Value {
+	newin := make([]reflect.Value, 0, len(in))
 
 	ctx := guessValCtx(in, isVar)
 	fmt.Printf("allref: %t\n", (ctx&ctx_allref) > 0)
@@ -208,10 +203,10 @@ func convertInput(in []reflect.Value, wantkind []reflect.Kind, isVar bool) []ref
 	for ix, iv := range in {
 		fmt.Printf("ix: %d, k: %s\n", ix, iv.Kind())
 		cv := convVal(iv, wantkind[ix], ctx)
-		res = append(res, cv)
+		newin = append(newin, cv)
 	}
-	if isVar && len(res) > 0 {
-		v := res[len(res)-1]
+	if isVar && len(newin) > 0 {
+		v := newin[len(newin)-1]
 		fmt.Printf("variadic func, len of the last arg: %d\n", v.Len())
 		for i := 0; i < v.Len(); i++ {
 			ixv := v.Index(i)
@@ -220,19 +215,13 @@ func convertInput(in []reflect.Value, wantkind []reflect.Kind, isVar bool) []ref
 			ixv.Set(cv)
 		}
 	}
-	return res
+	return newin
 }
 
-func overload(name string, fn interface{}) interface{} {
-	fmt.Println("overloading function", name)
-
-	fnval := reflect.ValueOf(fn)
-	fntyp := fnval.Type()
-
+func guessFnInputCtx(fntyp reflect.Type) (argctx, []reflect.Type, []reflect.Kind) {
+	var ctx argctx
 	newin := make([]reflect.Type, 0, fntyp.NumIn())
 	wantkind := make([]reflect.Kind, 0, fntyp.NumIn())
-
-	var ctx argctx
 	for i := 0; i < fntyp.NumIn(); i++ {
 		newtyp := fntyp.In(i)
 		wantkind = append(wantkind, fntyp.In(i).Kind())
@@ -247,6 +236,16 @@ func overload(name string, fn interface{}) interface{} {
 		}
 		newin = append(newin, newtyp)
 	}
+	return ctx, newin, wantkind
+}
+
+func overload(name string, fn interface{}) interface{} {
+	fmt.Println("overloading function", name)
+
+	fnval := reflect.ValueOf(fn)
+	fntyp := fnval.Type()
+
+	ctx, newin, wantkind := guessFnInputCtx(fntyp)
 
 	fmt.Printf("ctx: %08b\n", ctx)
 
@@ -258,8 +257,9 @@ func overload(name string, fn interface{}) interface{} {
 	fmt.Println(wantkind, newin, newout)
 
 	newfntyp := reflect.FuncOf(newin, newout, fntyp.IsVariadic())
-	overloaded := func(in []reflect.Value) []reflect.Value {
-		convin := convertInput(in, wantkind, fntyp.IsVariadic())
+
+	newfn := func(in []reflect.Value) []reflect.Value {
+		convin := convertInputArgs(in, wantkind, fntyp.IsVariadic())
 		for _, v := range convin {
 			fmt.Println(v.Interface(), v.Kind(), reflect.ValueOf(v.Interface()).Kind())
 		}
@@ -268,5 +268,5 @@ func overload(name string, fn interface{}) interface{} {
 		}
 		return fnval.Call(convin)
 	}
-	return reflect.MakeFunc(newfntyp, overloaded).Interface()
+	return reflect.MakeFunc(newfntyp, newfn).Interface()
 }
